@@ -1,14 +1,9 @@
-"""This is the email plugin for Auto-GPT."""
+"""This is the REST API plugin for Auto-GPT."""
 import os
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, TypedDict
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-
-# email imports
-import smtplib
-import email
-import imaplib
-from email.message import EmailMessage
-from email.header import decode_header
+import requests
+import json
 
 PromptGenerator = TypeVar("PromptGenerator")
 
@@ -17,38 +12,76 @@ class Message(TypedDict):
     role: str
     content: str
 
-
-class AutoGPTPluginEmail(AutoGPTPluginTemplate):
+def rest_request(method, url, headers=None, body=None):
     """
-    This is the Auto-GPT email plugin.
+    Perform a REST request using the provided parameters.
+
+    :param method: HTTP method (GET, POST, PUT, DELETE, PATCH)
+    :param url: URL for the request
+    :param headers: JSON string of HTTP headers (optional)
+    :param json: JSON-serializable object to include in the request body (optional)
+    """
+
+    if method not in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']:
+        raise ValueError(f"Invalid HTTP method '{method}'. Allowed methods: GET, POST, PUT, DELETE, PATCH.")
+
+    if headers:
+        headers = json.loads(headers)
+    if body:
+        body = json.loads(body)
+
+    print(f"method={method}")
+    print(f"body={body}")
+    response = requests.request(method=method, url=url, headers=headers, json=body)
+    print(f"SENT")
+
+    # Check the content type of the response
+    content_type = response.headers.get('Content-Type', '')
+
+    try:
+        if 'application/json' in content_type:
+            response_message_body = response.json()
+        else:
+            response_message_body = response.content.decode('utf-8')
+    except Exception as e:
+        response_message_body = f"Error while parsing response content: {str(e)}"
+
+    if response.ok:
+        return json.dumps({
+            "response_status_code": response.status_code,
+            "response_message_body": response_message_body,
+            "response_headers": dict(response.headers),
+        })
+    else:
+        result = f"The HTTP Request failed with the following HTTP Status Code: {response.status_code}.\n"
+        if response_message_body:
+            result += f"In addtion, the API returned the following response. Please use this information to debug the issue: {response_message_body}"
+        return result
+
+
+class AutoGPTPluginRestAPI(AutoGPTPluginTemplate):
+    """
+    This is the Auto-GPT REST API plugin.
     """
 
     def __init__(self):
         super().__init__()
-        self._name = "Auto-GPT-Email-Plugin"
+        self._name = "Auto-GPT-REST-API-Plugin"
         self._version = "0.1.0"
-        self._description = "Auto-GPT Email Plugin: Supercharge email management."
+        self._description = "Auto-GPT REST API Plugin: Supercharge REST API management."
 
     def post_prompt(self, prompt: PromptGenerator) -> PromptGenerator:
         prompt.add_command(
-            "Send Email",
-            "send_email",
+            "Send REST Request",
+            "send_rest_request",
             {
-                "to": "<to>",
-                "subject": "<subject>",
-                "body": "<body>"
+                "method": "<HTTP method>",
+                "url": "<url>",
+                "headers": "<headers as JSON>",
+                "body": "<body as JSON>"
             },
-            send_email
+            rest_request
         )
-        prompt.add_command(
-            "Read Emails",
-            "read_emails",
-            {
-                "imap_folder": "<imap_folder>",
-                "imap_search_command":
-                "<imap_search_criteria_command>"
-            },
-            read_emails)
         return prompt
 
     def can_handle_post_prompt(self) -> bool:
@@ -239,102 +272,3 @@ class AutoGPTPluginEmail(AutoGPTPluginTemplate):
             str: The resulting response.
         """
         pass
-
-
-email_sender = os.getenv("EMAIL_ADDRESS")
-email_password = os.getenv("EMAIL_PASSWORD")
-
-
-def send_email(recipient: str, subject: str, message: str) -> str:
-    """Send an email
-
-    Args:
-        recipient (str): The email of the recipients
-        subject (str): The subject of the email
-        message (str): The message content of the email
-
-    Returns:
-        str: Any error messages
-    """
-    smtp_host = os.getenv("EMAIL_SMTP_HOST")
-    smtp_port = os.getenv("EMAIL_SMTP_PORT")
-
-    if not email_sender:
-        return "Error: email not sent. EMAIL_ADDRESS not set in environment."
-    elif not email_password:
-        return "Error: email not sent. EMAIL_PASSWORD not set in environment."
-
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = email_sender
-    msg['To'] = recipient
-    msg.set_content(message)
-
-    # send email
-    with smtplib.SMTP(smtp_host, smtp_port) as smtp:
-        smtp.starttls()
-        smtp.login(email_sender, email_password)
-        smtp.send_message(msg)
-
-
-def read_emails(imap_folder: str = "inbox", imap_search_command: str = "UNSEEN") -> str:
-    """Read emails
-
-    Args:
-        recipient (str): The email of the recipients
-        subject (str): The subject of the email
-        message (str): The message content of the email
-
-    Returns:
-        str: Any error messages
-    """
-    imap_server = os.getenv("EMAIL_IMAP_SERVER")
-    mark_as_read = os.getenv("EMAIL_MARK_AS_READ")
-
-    mail = imaplib.IMAP4_SSL(imap_server)
-    mail.login(email_sender, email_password)
-    mail.select(imap_folder)
-    _, search_data = mail.search(None, imap_search_command)
-
-    messages = []
-    for num in search_data[0].split():
-        if mark_as_read:
-            _, msg_data = mail.fetch(num, "(BODY.PEEK[])")
-        else:
-            _, msg_data = mail.fetch(num, "(RFC822)")
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
-
-                subject, encoding = decode_header(msg["Subject"])[0]
-                if isinstance(subject, bytes):
-                    subject = subject.decode(encoding)
-
-                body = get_email_body(msg)
-                from_address = msg["From"]
-                to_address = msg["To"]
-                date = msg["Date"]
-                cc = msg["CC"] if msg["CC"] else ""
-
-                messages.append({
-                    "From": from_address,
-                    "To": to_address,
-                    "Date": date,
-                    "CC": cc,
-                    "Subject": subject,
-                    "Message Body": body
-                })
-
-    mail.logout()
-    return messages
-
-
-def get_email_body(msg: email.message.Message) -> str:
-    if msg.is_multipart():
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            content_disposition = str(part.get("Content-Disposition"))
-            if content_type == "text/plain" and "attachment" not in content_disposition:
-                return part.get_payload(decode=True).decode()
-    else:
-        return msg.get_payload(decode=True).decode()
