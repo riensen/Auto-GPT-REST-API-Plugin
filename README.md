@@ -1,4 +1,4 @@
-# Auto-GPT REST API Plugin
+# Proof-of-Concept: Auto-GPT REST API Plugin
 
 ## 🚀 Installation
 
@@ -26,23 +26,3 @@ If you haven't already, clone the [Auto-GPT](https://github.com/Significant-Grav
 
 ### 5. Copy the Zip file into the Auto-GPT Plugin folder
 Transfer the zip file from step 3 into the `plugins` subfolder within the `Auto-GPT` repo.
-
-### 6. Locate the `.env.template` file
-Find the file named `.env.template` in the main `/Auto-GPT` folder.
-
-### 7. Create and rename a copy of the file
-Duplicate the `.env.template` file and rename the copy to `.env` inside the `/Auto-GPT` folder.
-
-### 8. Edit the `.env` file
-Open the `.env` file in a text editor. Note: Files starting with a dot might be hidden by your operating system.
-
-### 9. Add REST API configuration settings
-Append the following configuration settings to the end of the file:
-
-```ini
-################################################################################
-### REST API
-################################################################################
-
-
-```
